@@ -1459,6 +1459,9 @@ class LLMEngine:
 
         return ctx.request_outputs
 
+    def save_layer_logits(self):
+        self.model_executor.save_layer_logits()
+
     def _has_remaining_steps(
         self, seq_group_metadata_list: Optional[List[SequenceGroupMetadata]]
     ) -> bool:

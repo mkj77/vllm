@@ -351,6 +351,7 @@ class LLM:
             priority=priority)
 
         outputs = self._run_engine(use_tqdm=use_tqdm)
+        self.llm_engine.save_layer_logits()
         return LLMEngine.validate_outputs(outputs, RequestOutput)
 
     def beam_search(

@@ -107,6 +107,7 @@ def get_attn_backend(
 
     backend = which_attn_to_use(head_size, sliding_window, dtype,
                                 kv_cache_dtype, block_size, is_attention_free)
+    backend = _Backend.XFORMERS
     if backend == _Backend.FLASH_ATTN:
         from vllm.attention.backends.flash_attn import (  # noqa: F401
             FlashAttentionBackend)

@@ -102,6 +102,7 @@ class PagedAttention:
         blocksparse_vert_stride: int = 0,
         blocksparse_block_size: int = 64,
         blocksparse_head_sliding_step: int = 0,
+        logits: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         if blocksparse_vert_stride is not None and blocksparse_vert_stride > 1:
             # use blocksparse paged attention
@@ -125,6 +126,7 @@ class PagedAttention:
         # For context len > 8192, use V2 kernel to avoid shared memory shortage.
         use_v1 = (max_seq_len <= 8192
                   and (max_num_partitions == 1 or num_seqs * num_heads > 512))
+        use_v1 = True
 
         if use_v1:
             # Run PagedAttention V1.
@@ -148,6 +150,7 @@ class PagedAttention:
                 blocksparse_vert_stride,
                 blocksparse_block_size,
                 blocksparse_head_sliding_step,
+                logits
             )
         else:
             # Run PagedAttention V2.

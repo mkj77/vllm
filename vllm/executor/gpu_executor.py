@@ -133,6 +133,9 @@ class GPUExecutor(ExecutorBase):
     ) -> Optional[List[Union[SamplerOutput, PoolerOutput]]]:
         output = self.driver_worker.execute_model(execute_model_req)
         return output
+    
+    def save_layer_logits(self):
+        self.driver_worker.save_layer_logits()
 
     def add_lora(self, lora_request: LoRARequest) -> bool:
         assert lora_request.lora_int_id > 0, "lora_id must be greater than 0."

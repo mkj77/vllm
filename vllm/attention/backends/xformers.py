@@ -453,6 +453,7 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
         k_scale: float = 1.0,
         v_scale: float = 1.0,
         attn_type: AttentionType = AttentionType.DECODER,
+        return_logits: bool = False
     ) -> torch.Tensor:
         """Forward pass with xFormers and PagedAttention.
 
@@ -645,20 +646,44 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
                 block_tables_arg,
             ) = _get_seq_len_block_table_args(decode_meta, False, attn_type)
 
-            output[num_prefill_tokens:] = PagedAttention.forward_decode(
-                decode_query,
-                key_cache,
-                value_cache,
-                block_tables_arg,
-                seq_lens_arg,
-                max_seq_len_arg,
-                self.kv_cache_dtype,
-                self.num_kv_heads,
-                self.scale,
-                self.alibi_slopes,
-                k_scale,
-                v_scale,
-            )
+            if not return_logits:
+                output[num_prefill_tokens:] = PagedAttention.forward_decode(
+                    decode_query,
+                    key_cache,
+                    value_cache,
+                    block_tables_arg,
+                    seq_lens_arg,
+                    max_seq_len_arg,
+                    self.kv_cache_dtype,
+                    self.num_kv_heads,
+                    self.scale,
+                    self.alibi_slopes,
+                    k_scale,
+                    v_scale,
+                )
+            else:
+                block_size = value_cache.size(3)
+                max_num_blocks_per_seq = block_tables_arg.size(1)
+                max_num_tokens = max_num_blocks_per_seq * block_size
+                logits = torch.zeros([decode_query.size(0), self.num_heads, max_num_tokens]).to(decode_query.device)
+                #print(f'logits shape = {logits.shape}')
+                # logits size = [num_seqs, num_heads, max_num_tokens]
+                output[num_prefill_tokens:] = PagedAttention.forward_decode(
+                    decode_query,
+                    key_cache,
+                    value_cache,
+                    block_tables_arg,
+                    seq_lens_arg,
+                    max_seq_len_arg,
+                    self.kv_cache_dtype,
+                    self.num_kv_heads,
+                    self.scale,
+                    self.alibi_slopes,
+                    k_scale,
+                    v_scale,
+                    logits=logits,
+                )
+                return output.view(-1, self.num_heads * self.head_size), logits
 
         # Reshape the output tensor.
         return output.view(-1, self.num_heads * self.head_size)

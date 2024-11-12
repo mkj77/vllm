@@ -180,6 +180,7 @@ class LocalOrDistributedWorkerBase(WorkerBase):
     is_driver_worker: bool
     model_runner: ModelRunnerBase
     observability_config: Optional[ObservabilityConfig] = None
+    layer_logits = []
 
     @property
     @abstractmethod
@@ -324,7 +325,7 @@ class LocalOrDistributedWorkerBase(WorkerBase):
                 orig_model_execute_time = intermediate_tensors.tensors.get(
                     "model_execute_time", torch.tensor(0)).item()
 
-        output = self.model_runner.execute_model(
+        output, layer_attn_logits = self.model_runner.execute_model(
             model_input=model_input,
             kv_caches=self.kv_cache[worker_input.virtual_engine]
             if self.kv_cache is not None else None,
@@ -332,6 +333,32 @@ class LocalOrDistributedWorkerBase(WorkerBase):
             num_steps=num_steps,
             **kwargs,
         )
+
+        # num_seqs = len(execute_model_req.seq_group_metadata_list) = layer_logits[0].size(0)
+        # len(layer_logist) = len(layer_states) = num_decode_layers
+        # layer_logits[0].size() = [num_seqs, num_heads, max_num_tokens]
+        def to_cpu(list_):
+            new_list_ = []
+            for l in list_:
+                if l is not None:
+                    new_l = l.cpu()
+                    del l
+                else:
+                    new_l = None
+                new_list_.append(new_l)
+            del list_
+            return new_list_
+        
+        #req_ids = [seq_group.request_id for seq_group in execute_model_req.seq_group_metadata_list]
+        req_ids = []
+        prompt_lens = []
+        for seq_group in execute_model_req.seq_group_metadata_list:
+            req_ids.append(seq_group.request_id)
+            # without beam search
+            assert len(seq_group.seq_data) == 1
+            prompt_lens.append(len(seq_group.seq_data[int(seq_group.request_id)]._prompt_token_ids))
+
+        self.layer_logits.append([req_ids, prompt_lens, to_cpu(layer_attn_logits)])
 
         model_execute_time = time.perf_counter() - start_time
         if not get_pp_group().is_last_rank:
@@ -352,6 +379,9 @@ class LocalOrDistributedWorkerBase(WorkerBase):
 
         # output is List[SamplerOutput]
         return output
+
+    def save_layer_logits(self):
+        torch.save(self.layer_logits, '/home/scripts/layer_logits.pt')
 
     def _execute_model_spmd(
         self,

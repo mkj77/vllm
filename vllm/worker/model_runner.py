@@ -1662,7 +1662,7 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
             model_forward_start.record()
 
         with set_forward_context(model_input.attn_metadata):
-            hidden_or_intermediate_states = model_executable(
+            hidden_or_intermediate_states, layer_logits = model_executable(
                 input_ids=model_input.input_tokens,
                 positions=model_input.input_positions,
                 kv_caches=kv_caches,
@@ -1741,7 +1741,7 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
 
             output.hidden_states = hidden_states
 
-        return [output]
+        return [output], layer_logits
 
 
 class CUDAGraphRunner:

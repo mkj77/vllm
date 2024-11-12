@@ -154,9 +154,15 @@ class Qwen2Attention(nn.Module):
         qkv, _ = self.qkv_proj(hidden_states)
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         q, k = self.rotary_emb(positions, q, k)
-        attn_output = self.attn(q, k, v, kv_cache, attn_metadata)
+        outputs = self.attn(q, k, v, kv_cache, attn_metadata, return_logits=True)
+        try:
+            attn_output, logits = outputs
+            # logits size = [num_seqs, num_heads, max_num_tokens]
+        except:
+            attn_output = outputs
+            logits = None
         output, _ = self.o_proj(attn_output)
-        return output
+        return output, logits
 
 
 class Qwen2DecoderLayer(nn.Module):
@@ -207,7 +213,7 @@ class Qwen2DecoderLayer(nn.Module):
         else:
             hidden_states, residual = self.input_layernorm(
                 hidden_states, residual)
-        hidden_states = self.self_attn(
+        hidden_states, logits = self.self_attn(
             positions=positions,
             hidden_states=hidden_states,
             kv_cache=kv_cache,
@@ -218,7 +224,7 @@ class Qwen2DecoderLayer(nn.Module):
         hidden_states, residual = self.post_attention_layernorm(
             hidden_states, residual)
         hidden_states = self.mlp(hidden_states)
-        return hidden_states, residual
+        return hidden_states, residual, logits
 
 
 class Qwen2Model(nn.Module):
@@ -283,22 +289,24 @@ class Qwen2Model(nn.Module):
             assert intermediate_tensors is not None
             hidden_states = intermediate_tensors["hidden_states"]
             residual = intermediate_tensors["residual"]
+        layer_logits = []
         for i in range(self.start_layer, self.end_layer):
             layer = self.layers[i]
-            hidden_states, residual = layer(
+            hidden_states, residual, logits = layer(
                 positions,
                 hidden_states,
                 kv_caches[i - self.start_layer],
                 attn_metadata,
                 residual,
             )
+            layer_logits.append(logits)
         if not get_pp_group().is_last_rank:
             return IntermediateTensors({
                 "hidden_states": hidden_states,
                 "residual": residual
             })
         hidden_states, _ = self.norm(hidden_states, residual)
-        return hidden_states
+        return hidden_states, layer_logits
 
     def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
         stacked_params_mapping = [

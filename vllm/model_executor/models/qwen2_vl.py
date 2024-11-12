@@ -651,6 +651,8 @@ def _get_vision_info(
     vision_tokens = grid_t * grid_h * grid_w
     llm_num_vision_tokens = (vision_tokens // image_processor.merge_size //
                              image_processor.merge_size)
+    print(f'grid_t={grid_t}, grid_h={grid_h}, grid_w={grid_w}, vision_tokens={vision_tokens}')
+    print(f'image_processor.merge_size={image_processor.merge_size}, llm_num_vision_tokens={llm_num_vision_tokens}')
 
     return resized_height, resized_width, llm_num_vision_tokens
 
@@ -1021,6 +1023,21 @@ class Qwen2VLForConditionalGeneration(nn.Module, SupportsMultiModal,
     ) -> torch.Tensor:
         mask = (input_ids == placeholder_token_id)
         inputs_embeds[mask, :] = multimodal_embeddings
+
+        first_occurrence = mask.nonzero(as_tuple=True)[0]
+        if first_occurrence.numel() > 0:
+            first_index = first_occurrence[0].item()
+        else:
+            first_index = -1
+
+        last_occurrence = mask.nonzero(as_tuple=True)[0]
+        if last_occurrence.numel() > 0:
+            last_index = last_occurrence[-1].item()
+        else:
+            last_index = -1
+
+        print(f"Video tokens begin at: {first_index}, end at: {last_index}")
+
         return inputs_embeds
 
     def forward(
@@ -1089,7 +1106,7 @@ class Qwen2VLForConditionalGeneration(nn.Module, SupportsMultiModal,
 
                 input_ids = None
 
-        hidden_states = self.model(
+        hidden_states, logits = self.model(
             input_ids=input_ids,
             positions=positions,
             kv_caches=kv_caches,
@@ -1097,7 +1114,7 @@ class Qwen2VLForConditionalGeneration(nn.Module, SupportsMultiModal,
             intermediate_tensors=intermediate_tensors,
             inputs_embeds=inputs_embeds,
         )
-        return hidden_states
+        return hidden_states, logits
 
     def compute_logits(self, hidden_states: torch.Tensor,
                        sampling_metadata: SamplingMetadata) -> torch.Tensor:
